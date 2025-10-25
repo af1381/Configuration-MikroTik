@@ -18,13 +18,7 @@ password "YOUR_TOKEN_OR_PASSWORD"
 EOF
 sudo chmod 600 /etc/apt/auth.conf.d/hesaba.conf
 ```
-> If using a non-standard port, write: `machine packages.hesaba.co:PORT` (no scheme).
 
-If Nexus uses a private/self‑signed CA, install it:
-```bash
-sudo cp YOUR_CA_CERT.crt /usr/local/share/ca-certificates/hesaba-ca.crt
-sudo update-ca-certificates
-```
 
 ---
 
