@@ -11,7 +11,7 @@ Store credentials in `auth.conf.d` so they are not embedded in URLs.
 ```bash
 sudo install -m 0700 -d /etc/apt/auth.conf.d
 sudo tee /etc/apt/auth.conf.d/hesaba.conf >/dev/null <<'EOF'
-machine packages.hesaba.co
+machine <nexus-address>
 login aptclient
 password "YOUR_TOKEN_OR_PASSWORD"
 EOF
