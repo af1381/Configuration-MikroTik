@@ -1,27 +1,27 @@
-# README — راه‌اندازی APT از Nexus (`packages.hesaba.co`)
+# README — Configure APT via Nexus (`packages.hesaba.co`)
 
-این سند نحوه‌ی راه‌اندازی کلاینت‌های Ubuntu برای استفاده از Nexus به‌عنوان منبع APT را توضیح می‌دهد. سناریو هدف: **Ubuntu 22.04 (Jammy)**. اگر 24.04 (Noble) دارید، در پیوست انتهای فایل راهنما آمده است.
+This document explains how to configure Ubuntu clients to use **Nexus** as the source for APT. Target distro in examples: **Ubuntu 22.04 (Jammy)**. For **Ubuntu 24.04 (Noble)**, see the appendix.
 
 ---
 
-## 1) پیش‌نیازهای Nexus (سمت سرور)
+## 1) Server-side prerequisites (Nexus)
 
-1. وارد **Administration → Security → Anonymous Access** شوید و تیک **Allow anonymous users to access the server** را **بردارید**.
-2. در **Security → Roles** یک Role فقط-خواندنی بسازید (مثلاً `apt-readers`) و برای هر ریپویی که می‌خواهید در دسترس باشد، دسترسی‌های زیر را بدهید:
+1. Go to **Administration → Security → Anonymous Access** and **disable** “Allow anonymous users to access the server.”
+2. Create a read-only role in **Security → Roles** (e.g., `apt-readers`) and grant these privileges for each APT repo you want exposed:
    - `nx-repository-view-apt-apt-ubuntu-jammy-browse`
    - `nx-repository-view-apt-apt-ubuntu-jammy-read`
    - `nx-repository-view-apt-apt-ubuntu-jammy-security-browse`
    - `nx-repository-view-apt-apt-ubuntu-jammy-security-read`
-   > الگو: `nx-repository-view-<format>-<repository>-browse|read`
-3. در **Security → Users** یک کاربر مخصوص کلاینت‌ها بسازید (مثلاً: `aptclient`) و Role بالا را به او بدهید.  
-   **توصیه**: اگر امکانش هست از **User Token** استفاده کنید (Security → User Tokens) تا به‌جای پسورد واقعی، توکن بدهید.
+   > Pattern: `nx-repository-view-<format>-<repository>-browse|read`
+3. In **Security → Users**, create a client user (e.g., `aptclient`) and assign the role above.  
+   **Tip:** Prefer **User Tokens** (Security → User Tokens) so you can provide a token instead of a real password.
 
 ---
 
-## 2) پیکربندی کلاینت Ubuntu 22.04 (Jammy)
+## 2) Ubuntu client configuration (22.04 Jammy)
 
-### 2.1) احراز هویت APT (ایمن و تمیز)
-فایل اختصاصی احراز هویت را بسازید تا نام کاربری/رمز در URL دیده نشود.
+### 2.1) APT authentication (secure and clean)
+Use an `auth.conf.d` entry so user/password is not embedded in repository URLs.
 ```bash
 sudo install -m 0700 -d /etc/apt/auth.conf.d
 sudo tee /etc/apt/auth.conf.d/hesaba.conf >/dev/null <<'EOF'
@@ -32,17 +32,16 @@ EOF
 sudo chown root:root /etc/apt/auth.conf.d/hesaba.conf
 sudo chmod 600 /etc/apt/auth.conf.d/hesaba.conf
 ```
+> If you use a non-standard port, specify it in the machine name: `packages.hesaba.co:PORT`  
+> Do **not** include a scheme (no `https://`) in `machine`.
 
-> اگر پورت اختصاصی دارید، هاست را به‌صورت `packages.hesaba.co:PORT` بنویسید.
-
-### 2.2) تعریف منابع APT (Jammy)
-**توجه:** ریپوی `apt-ubuntu-jammy` همه‌ی «کامپوننت‌های توزیع» `jammy`, `jammy-updates`, `jammy-backports` را پوشش می‌دهد.  
-`apt-ubuntu-jammy-security` مخصوص `jammy-security` است.
+### 2.2) APT sources for Jammy
+`apt-ubuntu-jammy` serves `jammy`, `jammy-updates`, and `jammy-backports`.  
+`apt-ubuntu-jammy-security` serves `jammy-security`.
 
 ```bash
-# بکاپ از سورس‌های فعلی (اختیاری)
+# Optional: backup and temporarily comment stock Ubuntu sources for a clean test
 sudo cp /etc/apt/sources.list /etc/apt/sources.list.bak
-# اختیاری: برای تست، سورس‌های پیش‌فرض Ubuntu را موقتاً comment کن
 sudo sed -i 's/^\s*deb /# &/g' /etc/apt/sources.list
 
 sudo tee /etc/apt/sources.list.d/hesaba-jammy.list >/dev/null <<'EOF'
@@ -52,23 +51,22 @@ deb [signed-by=/usr/share/keyrings/ubuntu-archive-keyring.gpg] https://packages.
 deb [signed-by=/usr/share/keyrings/ubuntu-archive-keyring.gpg] https://packages.hesaba.co/repository/apt-ubuntu-jammy-security jammy-security main restricted universe multiverse
 EOF
 ```
+**Why `signed-by=/usr/share/keyrings/ubuntu-archive-keyring.gpg`?** Nexus is proxying official Ubuntu archives; packages are signed with Ubuntu’s official key—no new key is needed.
 
-> چرا `signed-by=/usr/share/keyrings/ubuntu-archive-keyring.gpg`؟ چون Nexus این مخازن را **پروکسی** می‌کند و بسته‌ها با کلید رسمی Ubuntu امضا شده‌اند؛ نیازی به کلید جدید نیست.
-
-### 2.3) به‌روزرسانی و تست
+### 2.3) Update and verify
 ```bash
 sudo apt clean
 sudo apt update
 
-# نصب یک پکیج کوچک برای تست
+# smoke test
 sudo apt install -y jq
 
-# بررسی اینکه منبع واقعاً از Nexus است
+# confirm origin points at your Nexus
 apt-cache policy jq | sed -n '1,15p'
 ```
 
-### 2.4) اگر HTTPS با گواهی داخلی/خودامضا دارید
-CA داخلی را به سیستم اضافه کنید تا خطای TLS نگیرید:
+### 2.4) HTTPS with private/self-signed CA
+Install your internal CA to prevent TLS errors:
 ```bash
 sudo cp YOUR_CA_CERT.crt /usr/local/share/ca-certificates/hesaba-ca.crt
 sudo update-ca-certificates
@@ -76,21 +74,21 @@ sudo update-ca-certificates
 
 ---
 
-## 3) عیب‌یابی سریع
+## 3) Quick troubleshooting
 
 - **401 Unauthorized**  
-  - فایل `/etc/apt/auth.conf.d/hesaba.conf` وجود ندارد یا سطح دسترسی آن درست نیست (`chmod 600`).  
-  - نام هاست در `machine` دقیقاً باید `packages.hesaba.co` (یا با پورت) باشد.
+  - `/etc/apt/auth.conf.d/hesaba.conf` missing/ignored (wrong file perms—must be `600`).  
+  - `machine` must match exactly (`packages.hesaba.co` or `packages.hesaba.co:PORT`).
 - **403 Forbidden**  
-  - کاربر دارید ولی روی ریپوهای مورد نظر `browse/read` ندارید.
+  - User exists but lacks `browse/read` on the target repos.
 - **404 Not Found**  
-  - مسیر/توزیع اشتباه: باید `.../repository/apt-ubuntu-jammy/dists/jammy/...` باشد.
+  - Wrong path/distribution; expect `.../repository/apt-ubuntu-jammy/dists/jammy/...`.
 - **TLS/Certificate**  
-  - CA داخلی را نصب کنید (بخش 2.4).
-- **NO_PUBKEY / امضای GPG**  
-  - از `signed-by=/usr/share/keyrings/ubuntu-archive-keyring.gpg` استفاده کرده‌اید؟ بسته‌ها با کلید رسمی Ubuntu امضا شده‌اند.
+  - Install your internal CA (see 2.4).
+- **NO_PUBKEY / GPG**  
+  - Ensure the `signed-by=/usr/share/keyrings/ubuntu-archive-keyring.gpg` option is present for each `deb` line.
 
-**تست مستقیم با curl:**
+**Direct curl test:**
 ```bash
 curl -I -u aptclient:YOUR_TOKEN_OR_PASSWORD \
   https://packages.hesaba.co/repository/apt-ubuntu-jammy/dists/jammy/InRelease
@@ -98,10 +96,10 @@ curl -I -u aptclient:YOUR_TOKEN_OR_PASSWORD \
 
 ---
 
-## 4) (اختیاری) Docker APT برای Jammy
-اگر ریپوی `apt-docker-jammy` را هم در Nexus دارید و می‌خواهید از آن استفاده کنید (Docker CE):
+## 4) (Optional) Docker APT for Jammy
+If you have `apt-docker-jammy` proxied in Nexus and want Docker CE packages:
 ```bash
-# کلید رسمی Docker (برای امضای بسته‌های download.docker.com که توسط Nexus پروکسی می‌شود)
+# official Docker GPG key (download.docker.com is proxied by Nexus)
 sudo install -m 0755 -d /etc/apt/keyrings
 curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
 sudo chmod a+r /etc/apt/keyrings/docker.gpg
@@ -111,15 +109,13 @@ deb [arch=amd64 signed-by=/etc/apt/keyrings/docker.gpg] https://packages.hesaba.
 EOF
 
 sudo apt update
-# مثال نصب
 sudo apt install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
 ```
 
 ---
 
-## پیوست A) Ubuntu 24.04 (Noble Numbat)
-اگر میزبان شما 24.04 است، از ریپوهای `apt-ubuntu-noble` و `apt-ubuntu-noble-security` استفاده کنید و `jammy` را با `noble` جایگزین کنید:
-
+## Appendix A) Ubuntu 24.04 (Noble Numbat)
+For 24.04 clients, replace *jammy* with *noble* and use the `apt-ubuntu-noble` and `apt-ubuntu-noble-security` repos:
 ```bash
 sudo tee /etc/apt/sources.list.d/hesaba-noble.list >/dev/null <<'EOF'
 deb [signed-by=/usr/share/keyrings/ubuntu-archive-keyring.gpg] https://packages.hesaba.co/repository/apt-ubuntu-noble noble main restricted universe multiverse
@@ -129,13 +125,12 @@ deb [signed-by=/usr/share/keyrings/ubuntu-archive-keyring.gpg] https://packages.
 EOF
 sudo apt update
 ```
-
-> **هشدار:** مخازن `noble` را با Ubuntu 22.04 استفاده نکنید (ناسازگاری وابستگی‌ها).
+> **Warning:** Do **not** mix `noble` repos with Ubuntu 22.04 systems.
 
 ---
 
-## پیوست B) روش جایگزین (کم‌امن‌تر) با قرار دادن یوزر/پس در URL
-استفاده از این روش توصیه نمی‌شود (ممکن است در لاگ‌ها یا ابزارها آشکار شود)، ولی در صورت نیاز:
+## Appendix B) Alternative (less secure): credentials in URL
+Not recommended (credentials may leak via logs or process lists), but possible:
 ```bash
 deb [signed-by=/usr/share/keyrings/ubuntu-archive-keyring.gpg] \
 https://USERNAME:PASSWORD@packages.hesaba.co/repository/apt-ubuntu-jammy jammy main
@@ -143,8 +138,8 @@ https://USERNAME:PASSWORD@packages.hesaba.co/repository/apt-ubuntu-jammy jammy m
 
 ---
 
-## خلاصهٔ سریع
-1) Anonymous را در Nexus ببندید؛ نقش فقط-خواندنی بسازید؛ کاربر/توکن بسازید.  
-2) در کلاینت: `auth.conf.d/hesaba.conf` را با `machine packages.hesaba.co` تنظیم کنید.  
-3) سورس‌های `jammy` و `jammy-security` را به Nexus اشاره دهید.  
-4) `apt update` و نصب تست.  اگر خطا داشتید، بخش عیب‌یابی را ببینید.
+## TL;DR
+1) Disable Anonymous in Nexus; create read-only role and a client user (or user token).  
+2) On the client, create `/etc/apt/auth.conf.d/hesaba.conf` with `machine packages.hesaba.co`.  
+3) Point `jammy` and `jammy-security` sources to Nexus.  
+4) `apt update` and install a test package; use the troubleshooting section if needed.
