@@ -18,12 +18,7 @@ EOF
 sudo chown root:root /etc/apt/auth.conf.d/hesaba.conf
 sudo chmod 600 /etc/apt/auth.conf.d/hesaba.conf
 ```
-> If using a non‑standard port, use `machine packages.hesaba.co:PORT` (no scheme).
 
-If your Nexus uses a private/self‑signed CA, install it:
-```bash
-sudo cp YOUR_CA_CERT.crt /usr/local/share/ca-certificates/hesaba-ca.crt
-sudo update-ca-certificates
 ```
 
 ---
